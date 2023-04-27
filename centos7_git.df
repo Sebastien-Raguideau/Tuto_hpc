@@ -1,0 +1,13 @@
+BootStrap: yum
+OSVersion: 7
+MirrorURL: http://yum-repos.hpccluster/centos/7/os/$basearch/
+Include: yum
+UpdateURL: http://yum-repos.hpccluster/centos/7/updates/$basearch/
+
+%environment
+    source /hpc-home/raguidea/.bashrc
+
+%post
+    mkdir -p /hpc-home/raguidea
+    yum install -y which tar less nano git
+

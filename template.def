@@ -1,0 +1,6 @@
+BootStrap: yum
+OSVersion: 7
+MirrorURL: http://yum-repos.hpccluster/centos/7/os/$basearch/
+Include: yum
+UpdateURL: http://yum-repos.hpccluster/centos/7/updates/$basearch/
+

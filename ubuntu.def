@@ -1,0 +1,13 @@
+Bootstrap: docker
+From: ubuntu:latest
+
+%environment
+    source /hpc-home/raguidea/.bashrc
+
+%post
+    mkdir -p /hpc-home/raguidea
+    apt-get update
+    apt-get -y install nano less git
+  
+
+
