@@ -1,33 +1,43 @@
+
 # Using EI hpc system, a primer
 Documentation to get used to npb hpc system and submiting job with slurm/singularity/conda
 
 ## General infos
 
-EI hpc system is a cluster, each server is called a node. When connecting to the hpc, you will have access to a primary node, it can be different each time you connect. There is no way to connect to a specific one (to confirm).
+EI hpc system is a cluster, each server is called a node. When connecting to the hpc, you will have access to a submission node, it can be different each time you connect. At the time of writing this, there is only 2 different submission nodes, v0548 and v0558. Once connected to a submission node, you can access the other one with ssh, for instance `ssh raguidea@v0548.`
 
-The system is though out as a place where you submit jobs/tasks. It is discouraged to use the primary node to do anything else but submitting a job to the cluster. For instance gzip will be terminated after 1 min and you'll receive a mail about starting an interactive session. Indeed for any day to day tasks, you can start an interactive session which will be a job submitted to the cluster.
+The system is thought out as a place where you submit jobs/tasks. It is discouraged to use the submission node to do anything else but submitting a job to the cluster. For instance gzip will be terminated after 1 min and you'll receive a mail about starting an interactive session. Indeed for any day to day tasks, you can start an interactive session which will be a job submitted to the cluster.
 
 #### Interactive sessions
 They can be launched by just typing `interactive`
 You can use -h for all option, but mostly you can ask for cpu with `-c` and memory with `--mem` 
-They are one-off, one you exit disconnect you can't rejoin **(to check with martin)**
+They are one-off, one you exit disconnect you can't rejoin.
 
 #### Internet access
 Hpc is mostly isolated from internet. By default you can't download database/software or access the internet. As this is not a viable setup there is a node you can connect to do so. That is the software node. To access is just type `software`
 
 #### Database
-(check with martin)
+Some databases are stored in a common folder /ei/public/databases. Adding, updating these needs a ticket.
+ 
 #### Storage space
 - scratch/vs backed
 - project structuration
 - group project folder
 - check for available space
+
 #### Transfert files
 - (command line) aspera: https://ascptrans.cis.nbi.ac.uk
 - (browser/laptop) open on demand: https://ood.hpc.nbi.ac.uk/pun/sys/dashboard/
+- (cheating) use the Qib-vm mounted fs, whith access to all Projects. This can be accessed through ssh but using a vpn. Typical scp/rsync are able to work. 
+
 ## Initial setup
 -  transfert your .bashrc to get you aliases/PS1 .... 
 - nothing is installed, you have to do local install for everything you want to use outside of singularity, either build from source locally or only use singularity
+- List of things missing:
+	- git
+	- byobu (better than screen, or tmux)
+	- ....
+
 ## Singularity
 ### Principle
 - singularity generate containers: multi os/platform compatible immutable images 
@@ -48,6 +58,7 @@ singularity exec  -w <SANDBOX_PATH> <COMMAND>
 singularity exec  -w <SANDBOX_PATH> bash
 ```
 ##### Mounting FileSystem
+- **This is useful on software node, but by default there is automount on all other nodes (/hpc/home, /ei/projects, ... are already mounted)** 
 - No access to anything outside of container, be that software or.... **files**
 - To get access to files outside the container, you need to mount filesystem external to the container to a location inside the container
 -  If we continue with command bash, it looks like:
@@ -92,10 +103,11 @@ sudo singularity shell -w <SANDBOX_PATH>
 
 ## Slurm
 #### Concepts
-- The principle of slurm is that you submit a job to a partition, with requireement of resources (cpu/ram/gpu). It is queued, there is space the job is started. It is not a fifo queue, rare user will get priority over people having intensive usage.
-- If your tasks uses more resources than what you asked (ask for 100mo ram uses 101mo), it will be automatically terminated.
+- The principle of slurm is that you submit a job to a queue (partition), with requirement of resources (cpu/ram/gpu). It is queued, if there is space the job is started. It is not a fifo queue, rare user will get priority over people having intensive usage.
+- If your task uses more resources than what you asked (ask for 100mo ram uses 101mo), it will be automatically terminated.
 
 - There are different queues, they are called **Partition**. They have different node (servers) with different specs. Usually partitions are intended for different use cases and may have limit in term of how long a task can run. For example, ei-short is for under 45min tasks while tasks in ei-largemem can run for 90 days and request large amount of memory (>500G). You can find all partitions [here](https://nbip-research-computing.atlassian.net/wiki/spaces/CIS/pages/5177513/Queue+Partition+Limits). 
+- Note: a job can't be started on ei-largemem with less than 550G of memory requirement.
 
 #### Nodes available
 - not exhaustive/precise, but [here](https://nbip-research-computing.atlassian.net/wiki/spaces/CIS/pages/5177376/High+Performance+Computing+at+NBI).
@@ -126,9 +138,9 @@ Script is in github repos, here is an example,
 #SBATCH --mem=600000 #Ram for total task (in Mo)
 #SBATCH -o $(pwd)/slurm.%N.%j.out #stdout
 #SBATCH -e $(pwd)/slurm.%N.%j.err #stderr
-#SBATCH --gres=gpu:1 # require gpu resources
+# if you need gpu resourcces #SBATCH --gres=gpu:1
 
-srun -p ei- -N 1 -c 100 --mem=600000 -o $(pwd)/slurm.%N.%j.out -e $(pwd)/slurm.%N.%j.err  singularity exec  --env PS1="$(echo $PS1 |sed 's/\\h/\\h (sglrt)/g') " --bind $HOME:$HOME,/ei/projects/0/0dc38138-5425-46f1-aa4a-e4f57ae2abfc:/ei/projects/0/0dc38138-5425-46f1-aa4a-e4f57ae2abfc -w /hpc-home/raguidea/repos/submission/singularity/ubuntu $@
+srun singularity exec -w /hpc-home/raguidea/repos/submission/singularity/ubuntu $@
 ```
 Here the commented SBATCH are potential option for using this script with sbatch, not extremely relevant here as we don't use SBATCH but srun. The flag are the same between them, so still informative
 
@@ -136,23 +148,47 @@ The `"$@"` at the end of the command line is the way to pass argument to **scrip
 
 #### Example launching task:
 ```bash
-nohup <script_wrapper> <script_task> &> log_file&
-nohup submit_600G_high_mem.sh metaphlan4.sh &> log_file&
+sbatch <script_wrapper> <script_task>
+sbatch submit_600G_high_mem.sh metaphlan4.sh
 ```
 #### Monitoring tasks
-- `seff <JOBID>`
-- `squeue -u $USER`
+- `seff <JOBID>` : only gives correct info when the task is done.
+- `squeue -u $USER`: see all tasks in command line. 
+- WIthin browser, **[recommended](https://ood.hpc.nbi.ac.uk/pun/sys/activejobs/)** : 
 
-## Q for martin
-- how to mount hpc fs on my laptop, using this fail
-	```
-	sudo sshfs -o allow_other,default_permissions raguidea@hpc.nbi.ac.uk:/hpc-home/raguidea/repos /home/seb/Mount_Inside/hpc
-	```
-- There is a space with database managed at the hpc level, where is it and how do I access it?
+## FAQ
 - I can't use chmod, is there a way to change permissions? 
-- system wide setting of singularity doesn't authorise automatic mounting, can we do something about that?
-- is there a way to reconnect to interactive session
-- is there a way to nohup snakemake for task scheduling
-- is there a way to always connect to the same primary node and screen into it
-- chris want access to my home dir, at least reading/execution
-- easy way to see a partition specs (cpu/ram per node)
+	- nope. This is a weird filesystem, where everything is wrxwrx---. Permission are managed at another level using what Martin call ACL (access control list). You can't give access to your home directory. If you want/need access to a folder/project, open a ticket, contact Martin.  
+	- You can't  even make a file non writable. Be careful!
+- Singularity and mounting filesystem:
+	- There is no need to care about this on most node
+- is there a way to reconnect to interactive session:
+	- nope, if you disconnected or left, your session got closed/killed and you lost everything you had there, screen/nohup, everything.
+- is there a way to always connect to the same submission node and screen into it
+	- not exactly, you don't control which node you are going to connect to. But you can ssh to the other one. Unclear how long a screen would last there. It is recommended to not do anything in there. And I once received maybe automated mail about how I am using gzip, I should not, and it is going to be killed in 5 min. 
+- Easy way to see a partition specs (cpu/ram per node)
+	- [here](https://nbip-research-computing.atlassian.net/wiki/spaces/CIS/pages/5177513/Queue+Partition+Limits). 
+- how to mount hpc fs (filesystem) on my laptop?
+	- you can't use this behind vpn, so you need to be physically onsite.
+	- below are some line you need to write in your /etc/fstab file:
+		-  In there the uid/gid should be the one from your laptop
+		- the folder `/home/seb/Mount_Inside/hpc` is where you are mounting the hpc fs at. This folder should exist.
+		- The is your nbi password and username stored in clear, but behind the `/root/.cifscredentials` file contain your nbi username and password in clear but protected by the  root password of your laptop. An example is below
+
+
+```
+//ei-hpc-data/hpc-home/ /home/seb/Mount_Inside/hpc cifs iocharset=utf8,uid=raguidea,gid=users,credentials=/root/.cifscredentials,file_mode=0775,dir_mode=0775 0 0
+//ei-hpc-data.nbi.ac.uk/projects/ /ei/projects cifs iocharset=utf8,uid=raguidea,gid=users,credentials=/root/.cifscredentials,file_mode=0775,dir_mode=0775 0 0
+//ei-hpc-data.nbi.ac.uk/project-scratch /ei/.project-scratch cifs iocharset=utf8,uid=raguidea,gid=users,credentials=/root/.cifscredentials,file_mode=0775,dir_mode=0775 0 0
+```
+
+    username=raguidea@nbi.ac.uk
+    password=this_is_my_password_in_clear
+
+
+
+
+
+
+
+
